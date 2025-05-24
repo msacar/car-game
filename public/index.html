@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Multiplayer Car Racing Game</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div id="gameContainer">
+    <div id="joinForm">
+        <h2>🚗 Multiplayer Car Racing</h2>
+        <input type="text" id="playerName" placeholder="Enter your name" maxlength="20">
+        <br>
+        <button id="joinButton" onclick="joinGame()">Join Race</button>
+        <div id="joinStatus"></div>
+        <p style="font-size: 12px; color: #ccc; margin-top: 20px;">
+            Use WASD or arrow keys to drive<br>
+            Press T to toggle chat
+        </p>
+    </div>
+
+    <div id="ui" style="display: none;">
+        <div><strong>🏎️ Race Stats</strong></div>
+        <div>Speed: <span id="speed">0</span> km/h</div>
+        <div>Position: <span id="position">0, 0</span></div>
+        <div>Player: <span id="currentPlayer">Unknown</span></div>
+        <div>Room: <span id="currentRoom">-</span></div>
+        <div id="playerList">
+            <strong>Players in Race:</strong>
+            <div id="players"></div>
+        </div>
+    </div>
+
+    <div id="connectionStatus" style="display: none;">
+        Status: <span id="status" class="connecting">Connecting...</span>
+    </div>
+
+    <div id="chat">
+        <div id="chatMessages"></div>
+        <input type="text" id="chatInput" placeholder="Type message and press Enter..." maxlength="200">
+    </div>
+
+    <div id="controls" style="display: none;">
+        <strong>🎮 Controls:</strong><br>
+        W/↑ - Accelerate<br>
+        S/↓ - Brake/Reverse<br>
+        A/← - Turn Left<br>
+        D/→ - Turn Right<br>
+        Space - Handbrake<br>
+        T - Toggle Chat
+    </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.2/socket.io.js"></script>
+<script src="js/game.js"></script>
+</body>
+</html>

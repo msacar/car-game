@@ -1,0 +1,185 @@
+body {
+    margin: 0;
+    padding: 0;
+    overflow: hidden;
+    background: #000;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+}
+
+#gameContainer {
+    position: relative;
+    width: 100vw;
+    height: 100vh;
+}
+
+#ui {
+    position: absolute;
+    top: 20px;
+    left: 20px;
+    color: white;
+    z-index: 100;
+    background: rgba(0,0,0,0.8);
+    padding: 15px;
+    border-radius: 8px;
+    font-size: 14px;
+    min-width: 200px;
+    backdrop-filter: blur(5px);
+}
+
+#controls {
+    position: absolute;
+    bottom: 20px;
+    right: 20px;
+    color: white;
+    z-index: 100;
+    background: rgba(0,0,0,0.8);
+    padding: 15px;
+    border-radius: 8px;
+    font-size: 12px;
+    backdrop-filter: blur(5px);
+}
+
+#connectionStatus {
+    position: absolute;
+    top: 20px;
+    right: 20px;
+    color: white;
+    z-index: 100;
+    background: rgba(0,0,0,0.8);
+    padding: 10px;
+    border-radius: 8px;
+    font-size: 12px;
+    backdrop-filter: blur(5px);
+}
+
+#chat {
+    position: absolute;
+    bottom: 20px;
+    left: 20px;
+    width: 300px;
+    height: 200px;
+    background: rgba(0,0,0,0.8);
+    border-radius: 8px;
+    padding: 10px;
+    color: white;
+    z-index: 100;
+    backdrop-filter: blur(5px);
+    display: none;
+}
+
+#chatMessages {
+    height: 150px;
+    overflow-y: auto;
+    font-size: 12px;
+    margin-bottom: 10px;
+    padding: 5px;
+    background: rgba(255,255,255,0.1);
+    border-radius: 4px;
+}
+
+#chatInput {
+    width: 100%;
+    padding: 5px;
+    border: none;
+    border-radius: 4px;
+    background: rgba(255,255,255,0.2);
+    color: white;
+    font-size: 12px;
+}
+
+#chatInput::placeholder {
+    color: rgba(255,255,255,0.7);
+}
+
+#playerList {
+    margin-top: 10px;
+    font-size: 12px;
+}
+
+.connected { color: #00ff00; }
+.disconnected { color: #ff0000; }
+.connecting { color: #ffff00; }
+
+#joinForm {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    background: rgba(0,0,0,0.95);
+    color: white;
+    padding: 40px;
+    border-radius: 15px;
+    text-align: center;
+    z-index: 1000;
+    min-width: 400px;
+    backdrop-filter: blur(10px);
+    border: 1px solid rgba(255,255,255,0.2);
+}
+
+#joinForm h2 {
+    margin-top: 0;
+    color: #4CAF50;
+}
+
+#joinForm input {
+    margin: 10px;
+    padding: 12px;
+    border: none;
+    border-radius: 8px;
+    font-size: 16px;
+    width: 250px;
+    background: rgba(255,255,255,0.1);
+    color: white;
+    border: 1px solid rgba(255,255,255,0.3);
+}
+
+#joinForm input::placeholder {
+    color: rgba(255,255,255,0.7);
+}
+
+#joinForm button {
+    margin: 10px;
+    padding: 12px 24px;
+    border: none;
+    border-radius: 8px;
+    background: #4CAF50;
+    color: white;
+    font-size: 16px;
+    cursor: pointer;
+    transition: background 0.3s;
+}
+
+#joinForm button:hover {
+    background: #45a049;
+}
+
+#joinForm button:disabled {
+    background: #666;
+    cursor: not-allowed;
+}
+
+.loading {
+    display: inline-block;
+    width: 12px;
+    height: 12px;
+    border: 2px solid rgba(255,255,255,0.3);
+    border-radius: 50%;
+    border-top-color: white;
+    animation: spin 1s ease-in-out infinite;
+}
+
+@keyframes spin {
+    to { transform: rotate(360deg); }
+}
+
+.error {
+    color: #ff4444;
+    font-size: 14px;
+    margin-top: 10px;
+}
+
+.success {
+    color: #44ff44;
+    font-size: 14px;
+    margin-top: 10px;
+}
