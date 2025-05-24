@@ -34,6 +34,13 @@ export class CarPhysicsEngine {
             this.physics.acceleration = -this.physics.reverse;
         }
 
+        // Add small acceleration when turning without pressing forward/backward
+        if (this.physics.acceleration === 0) {
+            if (keys['KeyA'] || keys['ArrowLeft'] || keys['KeyD'] || keys['ArrowRight']) {
+                this.physics.acceleration = this.physics.power * 0.3; // 20% of normal power when turning
+            }
+        }
+
         // Get current velocity
         const velocity = new THREE.Vector3(
             this.physics.velocity.x,
