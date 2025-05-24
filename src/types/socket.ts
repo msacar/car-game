@@ -1,4 +1,4 @@
-import { PlayerData, JoinGameData, JoinResponse, PositionUpdate, PlayerUpdate, ChatMessage, ServerError } from './game';
+import { PlayerData, JoinGameData, JoinResponse, PositionUpdate, PlayerUpdate, ChatMessage, ServerError, Vector3D } from './game';
 
 export interface ServerToClientEvents {
     joined: (data: JoinResponse) => void;
@@ -10,9 +10,10 @@ export interface ServerToClientEvents {
 }
 
 export interface ClientToServerEvents {
-    join: (data: JoinGameData) => void;
-    updatePosition: (data: PositionUpdate) => void;
+    join: (data: { name: string }) => void;
+    updatePosition: (data: PlayerUpdate) => void;
     chatMessage: (data: { message: string }) => void;
+    collision: (data: { otherPlayerId: string, position: Vector3D, velocity: Vector3D }) => void;
 }
 
 export interface InterServerEvents {

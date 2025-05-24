@@ -124,6 +124,10 @@ export class CarPhysicsEngine {
         return { ...this.physics.velocity };
     }
 
+    public setVelocity(velocity: Vector3D): void {
+        this.physics.velocity = { ...velocity };
+    }
+
     public getSpeed(): number {
         const velocity = new THREE.Vector3(
             this.physics.velocity.x,
@@ -134,16 +138,36 @@ export class CarPhysicsEngine {
     }
 }
 
-function resolveCarCollision(carA: THREE.Group, carB: THREE.Group, velocityA: THREE.Vector3, velocityB: THREE.Vector3) {
-    const direction = carA.position.clone().sub(carB.position).normalize();
-    const overlap = Math.max(0, (carA.position.distanceTo(carB.position) - 2.0)); // 2 = sum of car radii
-
-    // Separate the cars by moving them away from each other
-    carA.position.add(direction.clone().multiplyScalar(overlap / 2));
-    carB.position.add(direction.clone().negate().multiplyScalar(overlap / 2));
-
-    // Exchange velocities (naive "bounce" approach)
-    const tempVelocity = velocityA.clone();
-    velocityA.copy(velocityB);
-    velocityB.copy(tempVelocity);
+export function resolveCarCollision(carA: THREE.Group, carB: THREE.Group, velocityA: THREE.Vector3, velocityB: THREE.Vector3) {
+    // Calculate collision normal
+    const collisionNormal = carA.position.clone().sub(carB.position).normalize();
+    
+    // Calculate relative velocity
+    const relativeVelocity = velocityA.clone().sub(velocityB);
+    const velocityAlongNormal = relativeVelocity.dot(collisionNormal);
+    
+    // Don't resolve if objects are moving apart
+    if (velocityAlongNormal > 0) return;
+    
+    // Calculate restitution (bounciness)
+    const restitution = 0.5;
+    
+    // Calculate impulse scalar
+    const impulseScalar = -(1 + restitution) * velocityAlongNormal;
+    
+    // Apply impulse
+    const impulse = collisionNormal.clone().multiplyScalar(impulseScalar);
+    velocityA.add(impulse);
+    velocityB.sub(impulse);
+    
+    // Separate the cars to prevent sticking
+    const overlap = Math.max(0, 4 - carA.position.distanceTo(carB.position));
+    const separation = collisionNormal.clone().multiplyScalar(overlap * 0.5);
+    carA.position.add(separation);
+    carB.position.sub(separation);
+    
+    // Add some random rotation on collision for more realistic effect
+    const randomRotation = (Math.random() - 0.5) * 0.2;
+    carA.rotation.y += randomRotation;
+    carB.rotation.y -= randomRotation;
 }

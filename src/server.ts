@@ -113,6 +113,69 @@ app.get('/api/stats', (req, res) => {
     res.json(stats);
 });
 
+// Utility function to check and resolve collisions between all pairs in a room
+function handlePlayerCollisions(room: RoomData) {
+    const playersArr = Array.from(room.players.values());
+    for (let i = 0; i < playersArr.length; ++i) {
+        for (let j = i+1; j < playersArr.length; ++j) {
+            const playerA = playersArr[i], playerB = playersArr[j];
+            if (!playerA || !playerB) continue;
+
+            const posA = playerA.position, posB = playerB.position;
+            const velA = playerA.velocity || { x: 0, y: 0, z: 0 };
+            const velB = playerB.velocity || { x: 0, y: 0, z: 0 };
+
+            const dx = posA.x - posB.x, dz = posA.z - posB.z;
+            const distSq = dx*dx + dz*dz;
+            
+            if (distSq < 16) { // 4*4, if 2 units radius
+                const dist = Math.sqrt(distSq) || 1.0;
+                
+                // Calculate collision normal
+                const nx = dx / dist, nz = dz / dist;
+                
+                // Calculate relative velocity
+                const relativeVelX = velA.x - velB.x;
+                const relativeVelZ = velA.z - velB.z;
+                const velocityAlongNormal = relativeVelX * nx + relativeVelZ * nz;
+                
+                // Don't resolve if objects are moving apart
+                if (velocityAlongNormal > 0) continue;
+                
+                // Calculate restitution (bounciness)
+                const restitution = 0.5;
+                
+                // Calculate impulse scalar
+                const impulseScalar = -(1 + restitution) * velocityAlongNormal;
+                
+                // Apply impulse
+                const impulseX = nx * impulseScalar;
+                const impulseZ = nz * impulseScalar;
+                
+                // Update velocities
+                playerA.velocity = {
+                    x: velA.x + impulseX,
+                    y: velA.y,
+                    z: velA.z + impulseZ
+                };
+                
+                playerB.velocity = {
+                    x: velB.x - impulseX,
+                    y: velB.y,
+                    z: velB.z - impulseZ
+                };
+                
+                // Separate the players
+                const separation = (4 - dist) / 2;
+                playerA.position.x += nx * separation;
+                playerA.position.z += nz * separation;
+                playerB.position.x -= nx * separation;
+                playerB.position.z -= nz * separation;
+            }
+        }
+    }
+}
+
 // Socket.IO connection handling
 io.on('connection', (socket) => {
     console.log(`Player connected: ${socket.id}`);
@@ -189,13 +252,21 @@ io.on('connection', (socket) => {
             player.velocity = data.velocity;
             player.lastUpdate = Date.now();
 
-            // Broadcast to other players in the same room
-            socket.to(player.roomId).emit('playerUpdate', {
-                id: socket.id,
-                position: data.position,
-                rotation: data.rotation,
-                velocity: data.velocity
-            });
+            // Run collision for this room:
+            const room = gameState.rooms.get(player.roomId);
+            if(room) {
+                handlePlayerCollisions(room);
+
+                // Broadcast all positions (after resolving collisions)
+                for(const other of room.players.values()) {
+                    io.to(player.roomId).emit('playerUpdate', {
+                        id: other.id,
+                        position: other.position,
+                        rotation: other.rotation,
+                        velocity: other.velocity
+                    });
+                }
+            }
 
         } catch (error) {
             console.error('Error handling position update:', error);
@@ -222,6 +293,37 @@ io.on('connection', (socket) => {
 
         } catch (error) {
             console.error('Error handling chat message:', error);
+        }
+    });
+
+    socket.on('collision', (data) => {
+        try {
+            const player = gameState.players.get(socket.id);
+            const otherPlayer = gameState.players.get(data.otherPlayerId);
+            
+            if (!player || !otherPlayer) return;
+            
+            // Update positions and velocities
+            player.position = data.position;
+            player.velocity = data.velocity;
+            
+            // Run collision resolution for the room
+            const room = gameState.rooms.get(player.roomId);
+            if (room) {
+                handlePlayerCollisions(room);
+                
+                // Broadcast updated positions to all players in the room
+                for (const other of room.players.values()) {
+                    io.to(player.roomId).emit('playerUpdate', {
+                        id: other.id,
+                        position: other.position,
+                        rotation: other.rotation,
+                        velocity: other.velocity
+                    });
+                }
+            }
+        } catch (error) {
+            console.error('Error handling collision:', error);
         }
     });
 

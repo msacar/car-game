@@ -9,7 +9,7 @@ import {
     PositionUpdate,
     PlayerUpdate,
     ChatMessage,
-    ConnectionStatus, ServerError
+    ConnectionStatus, ServerError, Vector3D
 } from '../types/game';
 
 export class NetworkManager {
@@ -78,10 +78,14 @@ export class NetworkManager {
         this.socket.emit('join', { name: playerName });
     }
 
-    public updatePosition(positionData: PositionUpdate): void {
+    public updatePosition(data: PlayerUpdate): void {
         if (!this.socket) return;
+        this.socket.emit('updatePosition', data);
+    }
 
-        this.socket.emit('updatePosition', positionData);
+    public sendCollision(data: { otherPlayerId: string, position: Vector3D, velocity: Vector3D }): void {
+        if (!this.socket) return;
+        this.socket.emit('collision', data);
     }
 
     public sendChatMessage(message: string): void {

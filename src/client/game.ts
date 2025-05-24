@@ -1,5 +1,5 @@
 import { NetworkManager } from './networking';
-import { CarPhysicsEngine } from './physics';
+import {CarPhysicsEngine, resolveCarCollision} from './physics';
 import { UIManager } from './ui';
 import {
     PlayerData,
@@ -17,7 +17,6 @@ declare const THREE: typeof import('three');
 declare global {
     // const io: typeof import('socket.io-client').io;
     // const THREE: typeof import('three');
-
 }
 
 class MultiplayerCarGame {
@@ -385,11 +384,12 @@ class MultiplayerCarGame {
     }
 
     private sendPositionUpdate(): void {
-        if (!this.networkManager.isConnected() || !this.playerCar) return;
+        if (!this.networkManager.isConnected() || !this.playerCar || !this.playerId) return;
 
         const velocity = this.physicsEngine.getVelocity();
 
         this.networkManager.updatePosition({
+            id: this.playerId,
             position: {
                 x: this.playerCar.position.x,
                 y: this.playerCar.position.y,
@@ -451,6 +451,7 @@ class MultiplayerCarGame {
 
         this.updateCamera();
         this.updateUI();
+        this.handleCollisions();
 
         // Send position updates at 30 FPS
         if (now - this.lastUpdate > this.updateInterval) {
@@ -458,8 +459,66 @@ class MultiplayerCarGame {
             this.lastUpdate = now;
         }
 
+        // Render scene
         this.renderer.render(this.scene, this.camera);
     }
+
+    private handleCollisions(): void {
+        if (!this.playerCar) return;
+        
+        const playerVelocity = new THREE.Vector3(
+            this.physicsEngine.getVelocity().x,
+            this.physicsEngine.getVelocity().y,
+            this.physicsEngine.getVelocity().z
+        );
+
+        let collisionOccurred = false;
+
+        for (const [otherId, otherCar] of this.otherPlayers) {
+            if (!otherCar) continue;
+            
+            // Get the other car's velocity from the last update
+            const otherVelocity = new THREE.Vector3(
+                (otherCar as any).userData.lastVelocity?.x || 0,
+                (otherCar as any).userData.lastVelocity?.y || 0,
+                (otherCar as any).userData.lastVelocity?.z || 0
+            );
+
+            // Simple radius-based collision check
+            const distance = this.playerCar.position.distanceTo(otherCar.position);
+            if (distance < 4) { // ~2 unit radius per car
+                collisionOccurred = true;
+                
+                // Resolve collision
+                resolveCarCollision(this.playerCar, otherCar, playerVelocity, otherVelocity);
+                
+                // Store the collision for network sync
+                this.networkManager.sendCollision({
+                    otherPlayerId: otherId,
+                    position: {
+                        x: this.playerCar.position.x,
+                        y: this.playerCar.position.y,
+                        z: this.playerCar.position.z
+                    },
+                    velocity: {
+                        x: playerVelocity.x,
+                        y: playerVelocity.y,
+                        z: playerVelocity.z
+                    }
+                });
+            }
+        }
+
+        // If collision occurred, update physics engine with new velocity
+        if (collisionOccurred) {
+            this.physicsEngine.setVelocity({
+                x: playerVelocity.x,
+                y: playerVelocity.y,
+                z: playerVelocity.z
+            });
+        }
+    }
+
 }
 
 // Global function for join button
@@ -473,3 +532,4 @@ class MultiplayerCarGame {
 document.addEventListener('DOMContentLoaded', () => {
     (window as any).game = new MultiplayerCarGame();
 });
+
