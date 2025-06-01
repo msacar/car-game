@@ -185,8 +185,8 @@ class MultiplayerCarGame {
 
     private async createPlayerCar(spawnPosition: Vector3D): Promise<void> {
         try {
-            // Load the GLB for the player car (e.g. with a red tint)
-            const loadedCar = await this.loadCarModel(0xff0000);
+            // Load the GLB for the player car
+            const loadedCar = await this.loadCarModel();
 
             this.playerCar = loadedCar;
             this.wheels = []; // if you relied on wheels previously, you can find them in the GLB hierarchy if needed
@@ -199,12 +199,8 @@ class MultiplayerCarGame {
 
 
     private async createOtherPlayer(playerData: PlayerData): Promise<void> {
-        // Optionally pick a random color overlay
-        const colors = [0x00ff00, 0x0000ff, 0xffff00, 0xff00ff, 0x00ffff, 0xffa500];
-        const randomColor = colors[Math.floor(Math.random() * colors.length)];
-
         try {
-            const loadedCar = await this.loadCarModel(randomColor);
+            const loadedCar = await this.loadCarModel();
             loadedCar.position.set(
                 playerData.position.x,
                 playerData.position.y,
@@ -432,7 +428,7 @@ class MultiplayerCarGame {
         });
     }
 
-    private loadCarModel(colorOverlay?: number): Promise<THREE.Group> {
+    private loadCarModel(): Promise<THREE.Group> {
         return new Promise((resolve, reject) => {
             // Path to your GLB file (adjust if necessary)
             const modelPath = 'models/car_model.glb';
@@ -442,19 +438,6 @@ class MultiplayerCarGame {
                 (gltf) => {
                     // gltf.scene is a THREE.Group containing the loaded model
                     const carGroup = gltf.scene;
-
-                    // Optionally, apply a color overlay or scaling here
-                    if (colorOverlay !== undefined) {
-                        carGroup.traverse((child) => {
-                            if ((child as THREE.Mesh).isMesh) {
-                                const mesh = child as THREE.Mesh;
-                                // Multiply the existing material color by overlay
-                                if (mesh.material instanceof THREE.MeshStandardMaterial) {
-                                    mesh.material.color.multiply(new THREE.Color(colorOverlay));
-                                }
-                            }
-                        });
-                    }
 
                     // Enable shadows (if your GLB has meshes with castShadow/receiveShadow)
                     carGroup.traverse((child) => {
