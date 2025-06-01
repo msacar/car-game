@@ -1,3 +1,21 @@
+// Import Three.js and GLTFLoader
+import * as THREE from 'three';
+import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
+
+// Make Three.js and GLTFLoader available globally
+(window as any).THREE = THREE;
+(window as any).GLTFLoader = GLTFLoader;
+
+// Update global declarations
+declare global {
+    interface Window {
+        THREE: typeof THREE;
+        GLTFLoader: typeof GLTFLoader;
+        game: MultiplayerCarGame;
+        joinGame: () => void;
+    }
+}
+
 import { NetworkManager } from './networking';
 import {CarPhysicsEngine, resolveCarCollision} from './physics';
 import { UIManager } from './ui';
@@ -10,14 +28,6 @@ import {
     Vector3D,
     Rotation3D
 } from '../types/game';
-
-// Let TypeScript know there's a global THREE available
-declare const THREE: typeof import('three');
-
-declare global {
-    // const io: typeof import('socket.io-client').io;
-    // const THREE: typeof import('three');
-}
 
 class MultiplayerCarGame {
     private scene: THREE.Scene;
@@ -40,11 +50,15 @@ class MultiplayerCarGame {
     private clock: THREE.Clock;
     private lastUpdate: number = 0;
     private readonly updateInterval: number = 1000 / 30; // 30 FPS updates
+    private gltfLoader: GLTFLoader;
 
     constructor() {
         this.scene = new THREE.Scene();
         this.camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
         this.renderer = new THREE.WebGLRenderer({ antialias: true });
+        
+        // Initialize GLTFLoader directly from import
+        this.gltfLoader = new GLTFLoader();
 
         this.networkManager = new NetworkManager();
         this.physicsEngine = new CarPhysicsEngine();
@@ -169,31 +183,45 @@ class MultiplayerCarGame {
         return car;
     }
 
-    private createPlayerCar(spawnPosition: Vector3D): void {
-        this.playerCar = this.createCar(0xff0000); // Red for player
-        this.wheels = (this.playerCar as any).wheels;
-        this.playerCar.position.set(spawnPosition.x, spawnPosition.y, spawnPosition.z);
-        this.scene.add(this.playerCar);
+    private async createPlayerCar(spawnPosition: Vector3D): Promise<void> {
+        try {
+            // Load the GLB for the player car (e.g. with a red tint)
+            const loadedCar = await this.loadCarModel(0xff0000);
+
+            this.playerCar = loadedCar;
+            this.wheels = []; // if you relied on wheels previously, you can find them in the GLB hierarchy if needed
+            this.playerCar.position.set(spawnPosition.x, spawnPosition.y, spawnPosition.z);
+            this.scene.add(this.playerCar);
+        } catch (err) {
+            console.error('Could not load player car model:', err);
+        }
     }
 
-    private createOtherPlayer(playerData: PlayerData): void {
+
+    private async createOtherPlayer(playerData: PlayerData): Promise<void> {
+        // Optionally pick a random color overlay
         const colors = [0x00ff00, 0x0000ff, 0xffff00, 0xff00ff, 0x00ffff, 0xffa500];
-        const color = colors[Math.floor(Math.random() * colors.length)];
+        const randomColor = colors[Math.floor(Math.random() * colors.length)];
 
-        const car = this.createCar(color);
-        car.position.set(
-            playerData.position.x,
-            playerData.position.y,
-            playerData.position.z
-        );
+        try {
+            const loadedCar = await this.loadCarModel(randomColor);
+            loadedCar.position.set(
+                playerData.position.x,
+                playerData.position.y,
+                playerData.position.z
+            );
 
-        // Add name label
-        this.addNameLabel(car, playerData.name);
+            // Add a name label (you can reuse your existing addNameLabel method)
+            this.addNameLabel(loadedCar, playerData.name);
 
-        (car as any).userData = { id: playerData.id, name: playerData.name };
-        this.otherPlayers.set(playerData.id, car);
-        this.scene.add(car);
+            (loadedCar as any).userData = { id: playerData.id, name: playerData.name };
+            this.otherPlayers.set(playerData.id, loadedCar);
+            this.scene.add(loadedCar);
+        } catch (err) {
+            console.error('Failed to load other player car model for', playerData.name, err);
+        }
     }
+
 
     private addNameLabel(car: THREE.Group, name: string): void {
         const canvas = document.createElement('canvas');
@@ -293,14 +321,14 @@ class MultiplayerCarGame {
             this.uiManager.updateConnectionStatus(status, status);
         });
 
-        this.networkManager.on('joined', (data: JoinResponse) => {
+        this.networkManager.on('joined', async (data: JoinResponse) => {
             this.playerId = data.player.id;
             this.roomId = data.room.id;
             this.playerName = data.player.name;
 
             console.log('Joined game:', data);
 
-            this.createPlayerCar(data.player.position);
+            await this.createPlayerCar(data.player.position);
             this.uiManager.setCurrentPlayer(data.player);
 
             data.room.players.forEach(player => {
@@ -313,9 +341,9 @@ class MultiplayerCarGame {
             this.startGame();
         });
 
-        this.networkManager.on('playerJoined', (player: PlayerData) => {
+        this.networkManager.on('playerJoined', async (player: PlayerData) => {
             console.log('Player joined:', player.name);
-            this.createOtherPlayer(player);
+            await this.createOtherPlayer(player);
             this.uiManager.addOtherPlayer(player);
         });
 
@@ -401,6 +429,56 @@ class MultiplayerCarGame {
                 z: this.playerCar.rotation.z
             },
             velocity: velocity
+        });
+    }
+
+    private loadCarModel(colorOverlay?: number): Promise<THREE.Group> {
+        return new Promise((resolve, reject) => {
+            // Path to your GLB file (adjust if necessary)
+            const modelPath = 'models/car_model.glb';
+
+            this.gltfLoader.load(
+                modelPath,
+                (gltf) => {
+                    // gltf.scene is a THREE.Group containing the loaded model
+                    const carGroup = gltf.scene;
+
+                    // Optionally, apply a color overlay or scaling here
+                    if (colorOverlay !== undefined) {
+                        carGroup.traverse((child) => {
+                            if ((child as THREE.Mesh).isMesh) {
+                                const mesh = child as THREE.Mesh;
+                                // Multiply the existing material color by overlay
+                                if (mesh.material instanceof THREE.MeshStandardMaterial) {
+                                    mesh.material.color.multiply(new THREE.Color(colorOverlay));
+                                }
+                            }
+                        });
+                    }
+
+                    // Enable shadows (if your GLB has meshes with castShadow/receiveShadow)
+                    carGroup.traverse((child) => {
+                        if ((child as THREE.Mesh).isMesh) {
+                            const mesh = child as THREE.Mesh;
+                            mesh.castShadow = true;
+                            mesh.receiveShadow = true;
+                        }
+                    });
+
+                    // You can adjust scale if the glb is too big or small:
+                    carGroup.scale.set(0.5, 0.5, 0.5); // adjust as needed
+
+                    resolve(carGroup);
+                },
+                (xhr) => {
+                    // Optional: progress callback
+                    // console.log(`Loading model: ${(xhr.loaded / xhr.total * 100).toFixed(1)}%`);
+                },
+                (error) => {
+                    console.error('Error loading GLB:', error);
+                    reject(error);
+                }
+            );
         });
     }
 

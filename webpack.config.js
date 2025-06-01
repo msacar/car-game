@@ -27,7 +27,6 @@ module.exports = {
         path: path.resolve(__dirname, 'public/js'),
     },
     externals: {
-        'three': 'THREE',
         'socket.io-client': 'io'
     },
     devtool: 'source-map'
