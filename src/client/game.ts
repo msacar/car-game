@@ -73,9 +73,13 @@ class MultiplayerCarGame {
     private init(): void {
         // Setup renderer
         this.renderer.setSize(window.innerWidth, window.innerHeight);
-        this.renderer.setClearColor(0x87CEEB);
+        this.renderer.setClearColor(0x74B9FF); // More vibrant sky blue to match sunlight
         this.renderer.shadowMap.enabled = true;
         this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+        
+        // Enable tone mapping for better lighting
+        this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
+        this.renderer.toneMappingExposure = 1.2;
 
         const gameContainer = document.getElementById('gameContainer');
         if (gameContainer) {
@@ -92,21 +96,39 @@ class MultiplayerCarGame {
     }
 
     private setupLighting(): void {
-        const ambientLight = new THREE.AmbientLight(0x404040, 0.6);
+        // Warm ambient light to simulate scattered sunlight
+        const ambientLight = new THREE.AmbientLight(0x87CEEB, 0.4); // Soft sky blue ambient
         this.scene.add(ambientLight);
 
-        const directionalLight = new THREE.DirectionalLight(0xffffff, 1);
-        directionalLight.position.set(50, 50, 50);
-        directionalLight.castShadow = true;
-        directionalLight.shadow.mapSize.width = 2048;
-        directionalLight.shadow.mapSize.height = 2048;
-        directionalLight.shadow.camera.near = 0.5;
-        directionalLight.shadow.camera.far = 500;
-        directionalLight.shadow.camera.left = -100;
-        directionalLight.shadow.camera.right = 100;
-        directionalLight.shadow.camera.top = 100;
-        directionalLight.shadow.camera.bottom = -100;
-        this.scene.add(directionalLight);
+        // Main sunlight - positioned like afternoon sun
+        const sunLight = new THREE.DirectionalLight(0xffffcc, 2.5); // Warm yellowish sunlight
+        sunLight.position.set(100, 150, 50); // High and angled like real sun
+        sunLight.castShadow = true;
+        
+        // Enhanced shadow settings for better quality
+        sunLight.shadow.mapSize.width = 4096;
+        sunLight.shadow.mapSize.height = 4096;
+        sunLight.shadow.camera.near = 0.5;
+        sunLight.shadow.camera.far = 800;
+        sunLight.shadow.camera.left = -200;
+        sunLight.shadow.camera.right = 200;
+        sunLight.shadow.camera.top = 200;
+        sunLight.shadow.camera.bottom = -200;
+        sunLight.shadow.bias = -0.0001; // Reduce shadow acne
+        
+        this.scene.add(sunLight);
+
+        // Additional fill light to simulate sky reflection
+        const fillLight = new THREE.DirectionalLight(0xadd8e6, 0.8); // Light blue fill
+        fillLight.position.set(-50, 80, -100); // From opposite direction
+        fillLight.castShadow = false; // No shadows for fill light
+        this.scene.add(fillLight);
+
+        // Optional: Add a subtle rim light for more dramatic effect
+        const rimLight = new THREE.DirectionalLight(0xfff8dc, 0.6); // Warm cream color
+        rimLight.position.set(-80, 60, 80);
+        rimLight.castShadow = false;
+        this.scene.add(rimLight);
     }
 
     private createGround(): void {
@@ -449,7 +471,7 @@ class MultiplayerCarGame {
                     });
 
                     // You can adjust scale if the glb is too big or small:
-                    carGroup.scale.set(0.5, 0.5, 0.5); // adjust as needed
+                    carGroup.scale.set(3.0, 3.0, 3.0); // 300% scale (3x bigger)
 
                     resolve(carGroup);
                 },
@@ -547,7 +569,7 @@ class MultiplayerCarGame {
 
             // Simple radius-based collision check
             const distance = this.playerCar.position.distanceTo(otherCar.position);
-            if (distance < 4) { // ~2 unit radius per car
+            if (distance < 24) { // ~12 unit radius per car (updated for 3x bigger cars)
                 collisionOccurred = true;
                 
                 // Resolve collision
