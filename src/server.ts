@@ -125,6 +125,7 @@ function handlePlayerCollisions(room: RoomData) {
             const velA = playerA.velocity || { x: 0, y: 0, z: 0 };
             const velB = playerB.velocity || { x: 0, y: 0, z: 0 };
 
+            // Calculate distance in 2D only (X-Z plane) to prevent Y-axis interference
             const dx = posA.x - posB.x, dz = posA.z - posB.z;
             const distSq = dx*dx + dz*dz;
             
@@ -139,10 +140,10 @@ function handlePlayerCollisions(room: RoomData) {
             if (distSq < collisionRadiusSq) {
                 const dist = Math.sqrt(distSq) || 1.0;
                 
-                // Calculate collision normal
+                // Calculate collision normal in 2D only (X-Z plane)
                 const nx = dx / dist, nz = dz / dist;
                 
-                // Calculate relative velocity
+                // Calculate relative velocity in 2D only
                 const relativeVelX = velA.x - velB.x;
                 const relativeVelZ = velA.z - velB.z;
                 const velocityAlongNormal = relativeVelX * nx + relativeVelZ * nz;
@@ -156,32 +157,42 @@ function handlePlayerCollisions(room: RoomData) {
                 // Calculate impulse scalar
                 const impulseScalar = -(1 + restitution) * velocityAlongNormal;
                 
-                // Apply impulse
+                // Apply impulse ONLY to X and Z components, preserve Y
                 const impulseX = nx * impulseScalar;
                 const impulseZ = nz * impulseScalar;
                 
-                // Update velocities
+                // Update velocities (preserve Y velocity)
                 playerA.velocity = {
                     x: velA.x + impulseX,
-                    y: velA.y,
+                    y: velA.y, // Preserve original Y velocity
                     z: velA.z + impulseZ
                 };
                 
                 playerB.velocity = {
                     x: velB.x - impulseX,
-                    y: velB.y,
+                    y: velB.y, // Preserve original Y velocity
                     z: velB.z - impulseZ
                 };
                 
                 // Separate the players using appropriate distance for scaled cars
+                // Apply separation ONLY in X and Z plane, preserve Y position
                 const minSeparationDistance = collisionRadius * 1.1; // 10% buffer
                 const separationNeeded = minSeparationDistance - dist;
                 if (separationNeeded > 0) {
                     const separation = separationNeeded * 0.5;
+                    
+                    // Store original Y positions
+                    const originalYA = playerA.position.y;
+                    const originalYB = playerB.position.y;
+                    
+                    // Apply separation only in X and Z
                     playerA.position.x += nx * separation;
                     playerA.position.z += nz * separation;
+                    playerA.position.y = originalYA; // Restore Y position
+                    
                     playerB.position.x -= nx * separation;
                     playerB.position.z -= nz * separation;
+                    playerB.position.y = originalYB; // Restore Y position
                 }
                 
                 // Log collision for debugging (can be removed in production)

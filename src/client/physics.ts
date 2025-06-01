@@ -107,15 +107,21 @@ export class CarPhysicsEngine {
             velocity.normalize().multiplyScalar(this.physics.maxSpeed);
         }
 
+        // Safeguard: Ensure Y velocity is always 0 (cars don't fly)
+        velocity.y = 0;
+
         // Update velocity
         this.physics.velocity = {
             x: velocity.x,
-            y: velocity.y,
+            y: 0, // Always keep Y velocity at 0
             z: velocity.z
         };
 
         // Apply movement
         car.position.add(velocity.clone().multiplyScalar(deltaTime));
+        
+        // Safeguard: Ensure car stays at ground level
+        car.position.y = 0;
 
         // Apply rotation - FIXED
         const speed = velocity.length();
@@ -283,11 +289,31 @@ export function resolveCarCollision(carA: THREE.Group, carB: THREE.Group, veloci
     const bboxA = computeCarBoundingBox(carA);
     const bboxB = computeCarBoundingBox(carB);
     
-    // Calculate collision normal using bounding box centers
-    const collisionNormal = bboxA.center.clone().sub(bboxB.center).normalize();
+    // Calculate collision normal ONLY in horizontal plane (X-Z) to keep cars on ground
+    const posA = carA.position.clone();
+    const posB = carB.position.clone();
     
-    // Calculate relative velocity
-    const relativeVelocity = velocityA.clone().sub(velocityB);
+    // Force Y to be the same for collision normal calculation
+    posA.y = 0;
+    posB.y = 0;
+    
+    const collisionNormal = posA.sub(posB).normalize();
+    
+    // If collision normal is zero (cars at exact same position), use a default normal
+    if (collisionNormal.length() === 0) {
+        collisionNormal.set(1, 0, 0); // Default to X direction
+    }
+    
+    // Ensure collision normal only affects X and Z, never Y
+    collisionNormal.y = 0;
+    collisionNormal.normalize();
+    
+    // Create 2D velocity vectors (remove Y component for collision calculation)
+    const velocity2DA = new THREE.Vector3(velocityA.x, 0, velocityA.z);
+    const velocity2DB = new THREE.Vector3(velocityB.x, 0, velocityB.z);
+    
+    // Calculate relative velocity in 2D
+    const relativeVelocity = velocity2DA.clone().sub(velocity2DB);
     const velocityAlongNormal = relativeVelocity.dot(collisionNormal);
     
     // Don't resolve if objects are moving apart
@@ -299,28 +325,52 @@ export function resolveCarCollision(carA: THREE.Group, carB: THREE.Group, veloci
     // Calculate impulse scalar
     const impulseScalar = -(1 + restitution) * velocityAlongNormal;
     
-    // Apply impulse
+    // Apply impulse ONLY to X and Z components
     const impulse = collisionNormal.clone().multiplyScalar(impulseScalar);
-    velocityA.add(impulse);
-    velocityB.sub(impulse);
+    velocityA.x += impulse.x;
+    velocityA.z += impulse.z;
+    // velocityA.y stays unchanged to preserve ground contact
+    
+    velocityB.x -= impulse.x;
+    velocityB.z -= impulse.z;
+    // velocityB.y stays unchanged to preserve ground contact
     
     // Calculate proper separation distance using actual bounding box sizes
     const separationDistance = (Math.max(bboxA.size.x, bboxA.size.z) + Math.max(bboxB.size.x, bboxB.size.z)) * 0.25;
-    const currentDistance = carA.position.distanceTo(carB.position);
-    const overlap = Math.max(0, separationDistance - currentDistance);
+    
+    // Calculate current distance in 2D only
+    const currentDistance2D = Math.sqrt(
+        Math.pow(carA.position.x - carB.position.x, 2) + 
+        Math.pow(carA.position.z - carB.position.z, 2)
+    );
+    
+    const overlap = Math.max(0, separationDistance - currentDistance2D);
     
     if (overlap > 0) {
         const separation = collisionNormal.clone().multiplyScalar(overlap * 0.5);
-        carA.position.add(separation);
-        carB.position.sub(separation);
+        
+        // Store original Y positions
+        const originalYA = carA.position.y;
+        const originalYB = carB.position.y;
+        
+        // Apply separation ONLY in X and Z
+        carA.position.x += separation.x;
+        carA.position.z += separation.z;
+        // Restore Y position
+        carA.position.y = originalYA;
+        
+        carB.position.x -= separation.x;
+        carB.position.z -= separation.z;
+        // Restore Y position
+        carB.position.y = originalYB;
     }
     
     // Add some rotation based on collision impact and car sizes
-    const impactStrength = Math.min(velocityAlongNormal * -1, 10); // Limit rotation impact
+    const impactStrength = Math.min(Math.abs(velocityAlongNormal), 10); // Limit rotation impact
     const rotationFactorA = impactStrength * 0.02;
     const rotationFactorB = impactStrength * 0.02;
     
-    // Apply rotation based on collision angle
+    // Apply rotation based on collision angle (only Y rotation for cars)
     const collisionAngle = Math.atan2(collisionNormal.z, collisionNormal.x);
     carA.rotation.y += Math.sin(collisionAngle) * rotationFactorA;
     carB.rotation.y -= Math.sin(collisionAngle) * rotationFactorB;

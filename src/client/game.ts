@@ -54,6 +54,11 @@ class MultiplayerCarGame {
     
     // Camera view system
     private cameraMode: 'rear' | 'chase' | 'side' = 'rear';
+    
+    // Collision debugging system
+    private debugMode: boolean = false;
+    private debugObjects: Map<string, THREE.Group> = new Map();
+    private collisionHelpers: THREE.Group = new THREE.Group();
 
     constructor() {
         this.scene = new THREE.Scene();
@@ -91,6 +96,9 @@ class MultiplayerCarGame {
 
         this.setupLighting();
         this.createGround();
+        
+        // Add collision debug helpers to scene
+        this.scene.add(this.collisionHelpers);
 
         this.camera.position.set(0, 8, 15);
         this.camera.lookAt(0, 0, 0);
@@ -217,6 +225,11 @@ class MultiplayerCarGame {
             this.wheels = []; // if you relied on wheels previously, you can find them in the GLB hierarchy if needed
             this.playerCar.position.set(spawnPosition.x, spawnPosition.y, spawnPosition.z);
             this.scene.add(this.playerCar);
+            
+            // Create debug visualization if debug mode is active
+            if (this.debugMode && this.playerId) {
+                this.createCarDebugVisualization(this.playerCar, this.playerId, true);
+            }
         } catch (err) {
             console.error('Could not load player car model:', err);
         }
@@ -238,6 +251,11 @@ class MultiplayerCarGame {
             (loadedCar as any).userData = { id: playerData.id, name: playerData.name };
             this.otherPlayers.set(playerData.id, loadedCar);
             this.scene.add(loadedCar);
+            
+            // Create debug visualization if debug mode is active
+            if (this.debugMode) {
+                this.createCarDebugVisualization(loadedCar, playerData.id, false);
+            }
         } catch (err) {
             console.error('Failed to load other player car model for', playerData.name, err);
         }
@@ -279,6 +297,11 @@ class MultiplayerCarGame {
             0.1
         );
         car.rotation.y = data.rotation.y;
+        
+        // Safeguard: Ensure other players also stay at ground level
+        if (car.position.y !== 0) {
+            car.position.y = 0;
+        }
 
         // Animate wheels
         const wheels = (car as any).wheels as THREE.Mesh[] | undefined;
@@ -295,6 +318,13 @@ class MultiplayerCarGame {
         if (car) {
             this.scene.remove(car);
             this.otherPlayers.delete(playerId);
+            
+            // Remove debug visualization
+            const debugGroup = this.debugObjects.get(playerId);
+            if (debugGroup) {
+                this.collisionHelpers.remove(debugGroup);
+                this.debugObjects.delete(playerId);
+            }
         }
     }
 
@@ -312,6 +342,12 @@ class MultiplayerCarGame {
             if (event.code === 'KeyC' && this.playerCar) {
                 event.preventDefault();
                 this.cycleCameraMode();
+            }
+            
+            // Debug mode toggle
+            if (event.code === 'KeyV' && this.playerCar) {
+                event.preventDefault();
+                this.toggleDebugMode();
             }
         });
 
@@ -578,6 +614,23 @@ class MultiplayerCarGame {
         if (this.playerCar) {
             this.physicsEngine.updatePhysics(this.playerCar, this.keys, deltaTime);
             this.animateWheels(deltaTime);
+            
+            // Safeguard: Ensure car stays at ground level (prevent underground bugs)
+            if (this.playerCar.position.y !== 0) {
+                this.playerCar.position.y = 0;
+            }
+            
+            // Update debug visualization for player car
+            if (this.playerId) {
+                this.updateCarDebugVisualization(this.playerCar, this.playerId);
+            }
+        }
+
+        // Update debug visualization for other players
+        if (this.debugMode) {
+            this.otherPlayers.forEach((car, id) => {
+                this.updateCarDebugVisualization(car, id);
+            });
         }
 
         this.updateCamera();
@@ -619,6 +672,25 @@ class MultiplayerCarGame {
             if (checkOBBCollision(this.playerCar, otherCar)) {
                 collisionOccurred = true;
                 
+                // Calculate collision normal for visualization
+                const posA = this.playerCar.position.clone();
+                const posB = otherCar.position.clone();
+                posA.y = 0;
+                posB.y = 0;
+                const collisionNormal = posA.sub(posB).normalize();
+                
+                // If collision normal is zero, use default
+                if (collisionNormal.length() === 0) {
+                    collisionNormal.set(1, 0, 0);
+                }
+                collisionNormal.y = 0;
+                collisionNormal.normalize();
+                
+                // Visualize collision if debug mode is active
+                if (this.debugMode) {
+                    this.visualizeCollision(this.playerCar, otherCar, collisionNormal);
+                }
+                
                 // Minimal collision logging
                 console.log(`Collision with ${(otherCar as any).userData.name || 'unknown player'}`);
                 
@@ -658,6 +730,201 @@ class MultiplayerCarGame {
         const nextIndex = (currentIndex + 1) % modes.length;
         this.cameraMode = modes[nextIndex] || 'rear';
         console.log(`Camera mode switched to: ${this.cameraMode}`);
+        console.log('Controls: V = Debug Mode, C = Camera, T = Chat');
+    }
+
+    private createCarDebugVisualization(car: THREE.Group, id: string, isPlayer: boolean = false): void {
+        if (!this.debugMode) return;
+
+        // Remove existing debug visualization
+        const existingDebug = this.debugObjects.get(id);
+        if (existingDebug) {
+            this.collisionHelpers.remove(existingDebug);
+        }
+
+        const debugGroup = new THREE.Group();
+
+        // Create bounding box wireframe
+        const bbox = computeCarBoundingBox(car);
+        const boxGeometry = new THREE.BoxGeometry(bbox.size.x, bbox.size.y, bbox.size.z);
+        const boxColor = isPlayer ? 0x00ff00 : 0xff6600; // Green for player, orange for others
+        const wireframeMaterial = new THREE.MeshBasicMaterial({
+            color: boxColor,
+            wireframe: true,
+            transparent: true,
+            opacity: 0.6
+        });
+        const boundingBoxMesh = new THREE.Mesh(boxGeometry, wireframeMaterial);
+        boundingBoxMesh.position.copy(car.position);
+        boundingBoxMesh.rotation.copy(car.rotation);
+        debugGroup.add(boundingBoxMesh);
+
+        // Create center point indicator
+        const centerGeometry = new THREE.SphereGeometry(0.5, 8, 8);
+        const centerMaterial = new THREE.MeshBasicMaterial({ 
+            color: isPlayer ? 0x00ff00 : 0xff6600 
+        });
+        const centerMesh = new THREE.Mesh(centerGeometry, centerMaterial);
+        centerMesh.position.copy(car.position);
+        debugGroup.add(centerMesh);
+
+        // Create forward direction indicator
+        const forwardGeometry = new THREE.ConeGeometry(1, 3, 8);
+        const forwardMaterial = new THREE.MeshBasicMaterial({ 
+            color: isPlayer ? 0x00ff00 : 0xff6600 
+        });
+        const forwardMesh = new THREE.Mesh(forwardGeometry, forwardMaterial);
+        forwardMesh.position.copy(car.position);
+        forwardMesh.position.z -= 5; // Offset forward
+        forwardMesh.rotation.copy(car.rotation);
+        forwardMesh.rotation.x = Math.PI / 2; // Point forward
+        debugGroup.add(forwardMesh);
+
+        // Store debug object
+        this.debugObjects.set(id, debugGroup);
+        this.collisionHelpers.add(debugGroup);
+    }
+
+    private updateCarDebugVisualization(car: THREE.Group, id: string): void {
+        if (!this.debugMode) return;
+
+        const debugGroup = this.debugObjects.get(id);
+        if (!debugGroup) return;
+
+        // Update all debug objects to match car position and rotation
+        debugGroup.children.forEach((child, index) => {
+            child.position.copy(car.position);
+            child.rotation.copy(car.rotation);
+            
+            // Special handling for forward direction indicator
+            if (index === 2) { // Forward indicator is the 3rd child
+                child.position.z -= 5;
+                child.rotation.x = Math.PI / 2;
+            }
+        });
+    }
+
+    private visualizeCollision(carA: THREE.Group, carB: THREE.Group, collisionNormal: THREE.Vector3): void {
+        if (!this.debugMode) return;
+
+        // Create collision normal arrow
+        const arrowGeometry = new THREE.ConeGeometry(0.5, 4, 8);
+        const arrowMaterial = new THREE.MeshBasicMaterial({ color: 0xff0000 });
+        const arrow = new THREE.Mesh(arrowGeometry, arrowMaterial);
+
+        // Position arrow at collision point
+        const collisionPoint = carA.position.clone().add(carB.position).multiplyScalar(0.5);
+        arrow.position.copy(collisionPoint);
+        arrow.position.y += 2; // Raise above cars
+
+        // Point arrow in collision normal direction
+        arrow.lookAt(collisionPoint.clone().add(collisionNormal.clone().multiplyScalar(5)));
+        arrow.rotation.x += Math.PI / 2;
+
+        this.collisionHelpers.add(arrow);
+
+        // Create collision impact circles
+        const circleGeometry = new THREE.RingGeometry(2, 3, 16);
+        const circleMaterial = new THREE.MeshBasicMaterial({ 
+            color: 0xff0000, 
+            transparent: true, 
+            opacity: 0.8,
+            side: THREE.DoubleSide
+        });
+        const circle = new THREE.Mesh(circleGeometry, circleMaterial);
+        circle.position.copy(collisionPoint);
+        circle.position.y = 0.1;
+        circle.rotation.x = -Math.PI / 2;
+
+        this.collisionHelpers.add(circle);
+
+        // Add distance indicator line
+        const lineGeometry = new THREE.BufferGeometry().setFromPoints([
+            carA.position.clone(),
+            carB.position.clone()
+        ]);
+        const lineMaterial = new THREE.LineBasicMaterial({ color: 0xffff00, linewidth: 3 });
+        const line = new THREE.Line(lineGeometry, lineMaterial);
+        this.collisionHelpers.add(line);
+
+        // Remove collision indicators after 2 seconds
+        setTimeout(() => {
+            this.collisionHelpers.remove(arrow);
+            this.collisionHelpers.remove(circle);
+            this.collisionHelpers.remove(line);
+        }, 2000);
+    }
+
+    private toggleDebugMode(): void {
+        this.debugMode = !this.debugMode;
+        console.log(`Collision Debug Mode: ${this.debugMode ? 'ON' : 'OFF'}`);
+
+        if (this.debugMode) {
+            // Create debug visualization for existing cars
+            if (this.playerCar && this.playerId) {
+                this.createCarDebugVisualization(this.playerCar, this.playerId, true);
+            }
+
+            this.otherPlayers.forEach((car, id) => {
+                this.createCarDebugVisualization(car, id, false);
+            });
+
+            // Add debug info to UI
+            this.addDebugUI();
+        } else {
+            // Clear all debug objects
+            this.clearDebugVisualization();
+            this.removeDebugUI();
+        }
+    }
+
+    private clearDebugVisualization(): void {
+        // Remove all debug objects
+        this.debugObjects.forEach((debugGroup) => {
+            this.collisionHelpers.remove(debugGroup);
+        });
+        this.debugObjects.clear();
+
+        // Clear collision helpers
+        this.collisionHelpers.clear();
+    }
+
+    private addDebugUI(): void {
+        // Add debug info panel
+        const debugPanel = document.createElement('div');
+        debugPanel.id = 'debugPanel';
+        debugPanel.style.cssText = `
+            position: fixed;
+            top: 10px;
+            right: 10px;
+            background: rgba(0, 0, 0, 0.8);
+            color: white;
+            padding: 10px;
+            border-radius: 5px;
+            font-family: monospace;
+            font-size: 12px;
+            z-index: 1000;
+        `;
+        debugPanel.innerHTML = `
+            <div><strong>🔧 COLLISION DEBUG MODE</strong></div>
+            <div>📦 Green: Player Bounding Box</div>
+            <div>📦 Orange: Other Players</div>
+            <div>🔴 Red Arrow: Collision Normal</div>
+            <div>🟡 Yellow Line: Distance</div>
+            <div>🔴 Red Circle: Collision Point</div>
+            <div><strong>Controls:</strong></div>
+            <div>V - Toggle Debug Mode</div>
+            <div>C - Change Camera</div>
+            <div>T - Toggle Chat</div>
+        `;
+        document.body.appendChild(debugPanel);
+    }
+
+    private removeDebugUI(): void {
+        const debugPanel = document.getElementById('debugPanel');
+        if (debugPanel) {
+            document.body.removeChild(debugPanel);
+        }
     }
 
 }
