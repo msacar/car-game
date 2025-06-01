@@ -17,7 +17,7 @@ declare global {
 }
 
 import { NetworkManager } from './networking';
-import {CarPhysicsEngine, resolveCarCollision} from './physics';
+import {CarPhysicsEngine, resolveCarCollision, checkOBBCollision, computeCarBoundingBox} from './physics';
 import { UIManager } from './ui';
 import {
     PlayerData,
@@ -51,6 +51,9 @@ class MultiplayerCarGame {
     private lastUpdate: number = 0;
     private readonly updateInterval: number = 1000 / 30; // 30 FPS updates
     private gltfLoader: GLTFLoader;
+    
+    // Camera view system
+    private cameraMode: 'rear' | 'chase' | 'side' = 'rear';
 
     constructor() {
         this.scene = new THREE.Scene();
@@ -267,6 +270,9 @@ class MultiplayerCarGame {
         const car = this.otherPlayers.get(data.id);
         if (!car) return;
 
+        // Store velocity in userData for collision detection
+        (car as any).userData.lastVelocity = data.velocity;
+
         // Smooth interpolation for other players
         car.position.lerp(
             new THREE.Vector3(data.position.x, data.position.y, data.position.z),
@@ -300,6 +306,12 @@ class MultiplayerCarGame {
             if (event.code === 'KeyT' && this.playerCar) {
                 event.preventDefault();
                 this.uiManager.toggleChat();
+            }
+            
+            // Camera view toggle
+            if (event.code === 'KeyC' && this.playerCar) {
+                event.preventDefault();
+                this.cycleCameraMode();
             }
         });
 
@@ -418,14 +430,41 @@ class MultiplayerCarGame {
     private updateCamera(): void {
         if (!this.playerCar) return;
 
-        const idealOffset = new THREE.Vector3(0, 8, 15);
+        let idealOffset: THREE.Vector3;
+        let lookAtHeight: number;
+
+        switch (this.cameraMode) {
+            case 'rear':
+                // Middle back view (like our Blender setup)
+                idealOffset = new THREE.Vector3(0, 5.4, 10.5);
+                lookAtHeight = 1.5;
+                break;
+                
+            case 'chase':
+                // Traditional chase camera (higher and further back)
+                idealOffset = new THREE.Vector3(0, 8, 15);
+                lookAtHeight = 2;
+                break;
+                
+            case 'side':
+                // Side view for better turning visibility
+                idealOffset = new THREE.Vector3(12, 6, 0);
+                lookAtHeight = 1.5;
+                break;
+                
+            default:
+                idealOffset = new THREE.Vector3(0, 5.4, 10.5);
+                lookAtHeight = 1.5;
+        }
+
         idealOffset.applyQuaternion(this.playerCar.quaternion);
         const idealPosition = this.playerCar.position.clone().add(idealOffset);
 
         this.camera.position.lerp(idealPosition, 0.1);
 
+        // Look at the car center, slightly above for better perspective
         const lookAtPosition = this.playerCar.position.clone();
-        lookAtPosition.y += 2;
+        lookAtPosition.y += lookAtHeight;
         this.camera.lookAt(lookAtPosition);
     }
 
@@ -472,6 +511,15 @@ class MultiplayerCarGame {
 
                     // You can adjust scale if the glb is too big or small:
                     carGroup.scale.set(3.0, 3.0, 3.0); // 300% scale (3x bigger)
+
+                    // Compute and store bounding box information for collision detection
+                    const boundingBox = computeCarBoundingBox(carGroup);
+                    (carGroup as any).userData.boundingBox = boundingBox;
+                    
+                    console.log('Car model loaded with bounding box:', {
+                        size: boundingBox.size,
+                        scale: boundingBox.scale
+                    });
 
                     resolve(carGroup);
                 },
@@ -567,12 +615,14 @@ class MultiplayerCarGame {
                 (otherCar as any).userData.lastVelocity?.z || 0
             );
 
-            // Simple radius-based collision check
-            const distance = this.playerCar.position.distanceTo(otherCar.position);
-            if (distance < 24) { // ~12 unit radius per car (updated for 3x bigger cars)
+            // Use improved OBB collision detection that accounts for actual model geometry and scale
+            if (checkOBBCollision(this.playerCar, otherCar)) {
                 collisionOccurred = true;
                 
-                // Resolve collision
+                // Minimal collision logging
+                console.log(`Collision with ${(otherCar as any).userData.name || 'unknown player'}`);
+                
+                // Resolve collision using enhanced collision resolution
                 resolveCarCollision(this.playerCar, otherCar, playerVelocity, otherVelocity);
                 
                 // Store the collision for network sync
@@ -600,6 +650,14 @@ class MultiplayerCarGame {
                 z: playerVelocity.z
             });
         }
+    }
+
+    private cycleCameraMode(): void {
+        const modes: Array<'rear' | 'chase' | 'side'> = ['rear', 'chase', 'side'];
+        const currentIndex = modes.indexOf(this.cameraMode);
+        const nextIndex = (currentIndex + 1) % modes.length;
+        this.cameraMode = modes[nextIndex] || 'rear';
+        console.log(`Camera mode switched to: ${this.cameraMode}`);
     }
 
 }
