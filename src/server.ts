@@ -128,7 +128,15 @@ function handlePlayerCollisions(room: RoomData) {
             const dx = posA.x - posB.x, dz = posA.z - posB.z;
             const distSq = dx*dx + dz*dz;
             
-            if (distSq < 16) { // 4*4, if 2 units radius
+            // Updated collision radius for 3x scaled car models
+            // Approximate car dimensions: 4x8 base * 3 scale = 12x24 actual
+            // Using diagonal collision radius for better detection
+            const carLength = 24; // 8 * 3 scale
+            const carWidth = 12;  // 4 * 3 scale
+            const collisionRadius = Math.sqrt(carLength * carLength + carWidth * carWidth) * 0.5; // ~13.4
+            const collisionRadiusSq = collisionRadius * collisionRadius; // ~180
+            
+            if (distSq < collisionRadiusSq) {
                 const dist = Math.sqrt(distSq) || 1.0;
                 
                 // Calculate collision normal
@@ -142,8 +150,8 @@ function handlePlayerCollisions(room: RoomData) {
                 // Don't resolve if objects are moving apart
                 if (velocityAlongNormal > 0) continue;
                 
-                // Calculate restitution (bounciness)
-                const restitution = 0.5;
+                // Reduced restitution for more realistic car behavior
+                const restitution = 0.3;
                 
                 // Calculate impulse scalar
                 const impulseScalar = -(1 + restitution) * velocityAlongNormal;
@@ -165,12 +173,19 @@ function handlePlayerCollisions(room: RoomData) {
                     z: velB.z - impulseZ
                 };
                 
-                // Separate the players
-                const separation = (4 - dist) / 2;
-                playerA.position.x += nx * separation;
-                playerA.position.z += nz * separation;
-                playerB.position.x -= nx * separation;
-                playerB.position.z -= nz * separation;
+                // Separate the players using appropriate distance for scaled cars
+                const minSeparationDistance = collisionRadius * 1.1; // 10% buffer
+                const separationNeeded = minSeparationDistance - dist;
+                if (separationNeeded > 0) {
+                    const separation = separationNeeded * 0.5;
+                    playerA.position.x += nx * separation;
+                    playerA.position.z += nz * separation;
+                    playerB.position.x -= nx * separation;
+                    playerB.position.z -= nz * separation;
+                }
+                
+                // Log collision for debugging (can be removed in production)
+                console.log(`Server collision between ${playerA.name} and ${playerB.name}, distance: ${dist.toFixed(2)}, threshold: ${collisionRadius.toFixed(2)}`);
             }
         }
     }
